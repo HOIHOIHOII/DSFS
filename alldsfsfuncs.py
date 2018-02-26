@@ -397,3 +397,9 @@ def f1_score(tp,fp,fn,tn):
     r = recall(tp,fp,tn,fn)
     
     return 2 * p * r/(p + r)
+
+
+def rescue_code(function):
+    """The best piece of code I've fucking ever seen"""
+    import inspect
+    get_ipython().set_next_input("".join(inspect.getsourcelines(function)[0]))
