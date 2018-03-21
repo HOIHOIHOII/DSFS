@@ -5,6 +5,7 @@ import math
 import numpy as np
 import random
 from scipy.special import erf
+from matplotlib import pyplot as plt
 
 
 def vector_add(v,w):
@@ -146,8 +147,6 @@ def two_sided_p_value(x, mu=0, sigma=1 ):
     return 1-normal_probability_between(mu-dev,mu+dev, mu, sigma)
 
 
-
-
 def make_matrix(num_rows, num_cols, entry_fn):
     """returns a num_rows x num_cols matrix
     whose (i,j)th entry is entry_fn(i,j)"""
@@ -237,12 +236,10 @@ def shape(A):
 def get_row(A,i):
     return A[i]
 
-def get_column(A,i):
+def get_column(A,j):
     return [A_i[j] for A_i in A]
 
 #implement other statistics functions from DSFS
-
-
 
 
 def correlation_matrix(data):
@@ -391,15 +388,131 @@ def specificity(tp,fp,fn,tn):
     """Fraction of all true positives achieved by model"""
     return tn/(tn+fp)
 
-
 def f1_score(tp,fp,fn,tn):
     p = precision(tp,fp,tn,fn)
     r = recall(tp,fp,tn,fn)
-    
     return 2 * p * r/(p + r)
-
 
 def rescue_code(function):
     """The best piece of code I've fucking ever seen"""
     import inspect
     get_ipython().set_next_input("".join(inspect.getsourcelines(function)[0]))
+
+def predict(x_i, beta):
+    return dot(x_i, beta)
+
+
+def error(x_i, y_i, beta):
+    return y_i - predict(x_i, beta)
+
+def total_sum_of_squares(y):
+    """the total squared variation of y_i's from their mean"""
+    return sum(v ** 2 for v in de_mean(y))
+
+def squared_error(x_i, y_i, beta):
+    return error(x_i, y_i, beta) ** 2
+
+
+def squared_error_gradient(x_i, y_i, beta):
+    """the gradient corresponding to the ith squared error term"""
+    return [-2 * x_ij * error(x_i, y_i, beta)
+            for x_ij in x_i]
+
+def estimate_beta(x, y):
+    beta_initial = [random.random() for x_i in x[0]]
+    return minimise_stochastic(squared_error, 
+                               squared_error_gradient, 
+                               x, y, 
+                               beta_initial, 
+                               0.001)  
+
+def multiple_r_squared(x, y, beta):
+    sum_of_squared_errors = sum(error(x_i, y_i, beta) ** 2 
+                                for x_i, y_i in zip(x,y))
+    return 1.0 - sum_of_squared_errors / total_sum_of_squares(y)
+
+def bootstrap_sample(data):
+    """randomly samples len(data) elements with replacement"""
+    return [random.choice(data) for _ in data]
+    
+def bootstrap_statistic(data, stats_fn, num_samples):
+    """evaluates stats_fn on num_samples bootstrap samples from data"""
+    return [stats_fn(bootstrap_sample(data)) 
+            for _ in range(num_samples)]
+
+def estimate_sample_beta(sample):
+    """sample is a list of pairs (x_i, y_i)"""
+    x_sample, y_sample = zip(*sample) #magic unzipping trick
+    return estimate_beta(x_sample, y_sample)
+
+def p_value(beta_hat_j, sigma_hat_j):
+    if beta_hat_j > 0:
+        #if the coefficient is positive we need to compute
+        #twice the probability of seeing an even *larger* value
+        return 2*(1-normal_cdf(beta_hat_j/sigma_hat_j))
+    else:
+        #otherwise twice the probability of seeing a smaller value
+        return 2*(normal_cdf(beta_hat_j / sigma_hat_j))
+
+
+def ridge_penalty(beta, alpha):
+    #we usually don't penalise beta_0
+    return alpha*dot(beta[1:], beta[1:])
+
+def squared_error_ridge(x_i, y_i, beta, alpha):
+    """Estimate erorr plus ridge penalty on beta"""
+    return error(x_i, y_i, beta) ** 2 + ridge_penalty(beta, alpha)
+
+def ridge_penalty_gradient(beta, alpha):
+    """gradient of just the ridge penalty"""
+    return [0] + [2 * alpha * beta_j for beta_j in beta[1:]]
+
+def squared_error_ridge_gradient(x_i, y_i, beta, alpha):
+    """the gradient corresponding to the ith squared error term 
+    including the ridge penalty"""
+    return vector_add(squared_error_gradient(x_i, y_i, beta),
+                     ridge_penalty_gradient(beta, alpha))
+
+def estimate_beta_ridge(x, y, alpha):
+    """use gradient descent to fit a ridge regression with penalty alpha"""
+    beta_initial = [random.random() for x_i in x[0]]
+    return minimise_stochastic( partial(squared_error_ridge, alpha=alpha),
+                                partial(squared_error_ridge_gradient, alpha=alpha), x, y, beta_initial, 0.001)
+
+def bucketise(point, bucket_size):
+    """floor the point to the next lower multiple of bucket_size"""
+    return bucket_size * math.floor(point / bucket_size)
+
+def make_histogram(points, bucket_size):
+    """buckets the points and counts how many in each bucket"""
+    return Counter(bucketise(point, bucket_size) for point in points)
+
+def plot_histogram(points, bucket_size, title=""):
+    histogram = make_histogram(points, bucket_size)
+    plt.bar(histogram.keys(), histogram.values(), width=bucket_size)
+    plt.title(title)
+    plt.show()
+
+def random_normal():
+    """returns a random draw from a standard normal distribution"""
+    return norm.ppf(random.random())
+
+def scale(data_matrix):
+    """returns the means and std devs of each column"""
+    num_rows, num_cols = shape(data_matrix)
+    means = [mean(get_column(data_matrix,j)) for j in range(num_cols)]
+    stdevs = [standard_deviation(get_column(data_matrix,j)) for j in range(num_cols)]
+    return means, stdevs
+
+def rescale(data_matrix):
+    """rescales the input data so that each col has mean 0 and stdev 1. Does nothing to cols with 0 stdev"""
+    means, stdevs = scale(data_matrix)
+
+    def rescaled(i,j):
+        if stdevs[j] > 0:
+            return (data_matrix[i][j] - means[j])/stdevs[j]
+        else:
+            return data_matrix[i][j]
+        
+    num_rows, num_cols = shape(data_matrix)
+    return make_matrix(num_rows, num_cols, rescaled)
