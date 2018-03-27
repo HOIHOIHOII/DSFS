@@ -358,8 +358,33 @@ def minimise_stochastic(target_fn, gradient_fn, x, y, theta_0, alpha_0=0.01):
         for x_i, y_i in in_random_order(data):
             gradient_i = gradient_fn(x_i, y_i, theta)
             theta = vector_subtract(theta, scalar_multiply(alpha, gradient_i))
-            
     return min_theta
+
+def maximise_stochastic(target_fn, gradient_fn, x, y, theta_0, alpha_0=0.001):
+    return minimise_stochastic(negate(target_fn),
+    							negate_all(gradient_fn), 
+                          		x,
+                          		y, 
+                          		theta_0,
+                          		alpha_0
+                          		)
+
+
+
+def split_data(data, prob):
+    """split data into fractions [prob, 1 - prob]"""
+    results = [], []
+    for row in data:
+        results[0 if random.random() < prob else 1].append(row)
+    return results
+
+def train_test_split(x, y, test_pct):
+    data = zip(x, y)                              # pair corresponding values  
+    train, test = split_data(data, 1 - test_pct)  # split the dataset of pairs
+    x_train, y_train = zip(*train)                # magical un-zip trick
+    x_test, y_test = zip(*test)
+    return x_train, x_test, y_train, y_test
+
 
 def accuracy(tp,fp,fn,tn):
     """fraction of results that are correct predictions"""
